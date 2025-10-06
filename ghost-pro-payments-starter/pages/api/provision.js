@@ -4,7 +4,7 @@ export default async function handler(req, res) {
     const { email, name, planLabel } = req.body || {};
     if (!email) return res.status(400).json({ error: "Missing email" });
 
-    const { createGhostMember } = await import("../../../lib/ghost.js");
+const { createGhostMember } = await import("../../lib/ghost.js");
     await createGhostMember(email, name, planLabel ? [planLabel] : []);
 
     return res.status(200).json({ ok: true });
