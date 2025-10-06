@@ -1,31 +1,45 @@
-import jwt from "jsonwebtoken";
+// lib/ghost.js
+import GhostAdminAPI from '@tryghost/admin-api';
 
-const GHOST_URL = process.env.GHOST_URL;
-const ADMIN_KEY = process.env.GHOST_ADMIN_API_KEY; // "id:secret"
+const { GHOST_URL, GHOST_ADMIN_API_KEY } = process.env;
 
-export async function createGhostMember(email, name = undefined, labels = []) {
-  if (!GHOST_URL || !ADMIN_KEY) {
-    throw new Error("Missing GHOST_URL or GHOST_ADMIN_API_KEY env vars");
-  }
-  const [id, secret] = ADMIN_KEY.split(":");
-  const token = jwt.sign({ kid: id }, Buffer.from(secret, "hex"), {
-    algorithm: "HS256",
-    expiresIn: "5m",
-    audience: "/admin/"
-  });
-
-  const res = await fetch(`${GHOST_URL}/ghost/api/admin/members/`, {
-    method: "POST",
-    headers: {
-      "Authorization": `Ghost ${token}`,
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({ members: [{ email, name, labels }] })
-  });
-
-  if (!res.ok) {
-    const txt = await res.text();
-    throw new Error(`Ghost error ${res.status}: ${txt}`);
-  }
-  return await res.json();
+if (!GHOST_URL || !GHOST_ADMIN_API_KEY) {
+  throw new Error('Faltan variables de entorno GHOST_URL o GHOST_ADMIN_API_KEY');
 }
+
+export const ghost = new GhostAdminAPI({
+  url: GHOST_URL,
+  key: GHOST_ADMIN_API_KEY,
+  version: 'v5',
+});
+
+// Crea (o devuelve) un miembro por email
+export async function ensureMember(email, name) {
+  try {
+    const found = await ghost.members.browse({ filter: `email:'${email}'`, limit: 1 });
+    if (found?.length) return found[0];
+  } catch (_) {
+    // si browse falla por vacío, continuamos creando
+  }
+  return await ghost.members.add({ email, name });
+}
+
+// Agrega una etiqueta al miembro si no la tiene
+export async function attachLabel(memberId, label) {
+  if (!label) return;
+  try {
+    const member = await ghost.members.read({ id: memberId });
+    const labels = (member.labels || []).map(l => l.name);
+    if (!labels.includes(label)) {
+      labels.push(label);
+      await ghost.members.edit({
+        id: memberId,
+        labels: labels.map(name => ({ name })),
+      });
+    }
+  } catch (e) {
+    console.error('attachLabel error', e);
+  }
+}
+
+export default ghost;
